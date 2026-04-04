@@ -102,7 +102,7 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
     });
   }
 
-  void _saveSession() {
+  Future<void> _saveSession() async {
     if (_secondsElapsed == 0 || _recordedLevels.isEmpty) return;
 
     final newSession = SessionModel(
@@ -113,7 +113,9 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
       riskLevel: _sessionRiskStatus,
     );
 
-    addSessionToHistory(newSession);
+    await addSessionToHistory(newSession);
+
+    if (!mounted) return;
 
     ScaffoldMessenger.of(
       context,
