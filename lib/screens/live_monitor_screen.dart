@@ -1,7 +1,102 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
-class LiveMonitorScreen extends StatelessWidget {
+class LiveMonitorScreen extends StatefulWidget {
   const LiveMonitorScreen({super.key});
+
+  @override
+  State<LiveMonitorScreen> createState() => _LiveMonitorScreenState();
+}
+
+class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
+  Timer? _timer;
+  bool _isMonitoring = false;
+  int _secondsElapsed = 0;
+  int _currentIndex = 0;
+
+  final List<int> _mockNoiseLevels = [
+    58,
+    62,
+    67,
+    72,
+    76,
+    81,
+    85,
+    88,
+    79,
+    73,
+    69,
+    64,
+  ];
+
+  int get _currentDb => _mockNoiseLevels[_currentIndex];
+
+  String get _riskStatus {
+    if (_currentDb < 70) return 'Safe';
+    if (_currentDb < 85) return 'Moderate';
+    return 'High Exposure';
+  }
+
+  Color get _statusColor {
+    if (_currentDb < 70) return Colors.green;
+    if (_currentDb < 85) return Colors.orange;
+    return Colors.red;
+  }
+
+  String get _locationLabel {
+    if (_currentDb < 70) return 'Library Area';
+    if (_currentDb < 85) return 'Main Road';
+    return 'Workshop';
+  }
+
+  void _startMonitoring() {
+    if (_isMonitoring) return;
+
+    setState(() {
+      _isMonitoring = true;
+    });
+
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      setState(() {
+        _secondsElapsed++;
+        _currentIndex = (_currentIndex + 1) % _mockNoiseLevels.length;
+      });
+    });
+  }
+
+  void _stopMonitoring() {
+    _timer?.cancel();
+    setState(() {
+      _isMonitoring = false;
+    });
+  }
+
+  void _resetSession() {
+    _timer?.cancel();
+    setState(() {
+      _isMonitoring = false;
+      _secondsElapsed = 0;
+      _currentIndex = 0;
+    });
+  }
+
+  String _formatDuration(int totalSeconds) {
+    final hours = totalSeconds ~/ 3600;
+    final minutes = (totalSeconds % 3600) ~/ 60;
+    final seconds = totalSeconds % 60;
+
+    final h = hours.toString().padLeft(2, '0');
+    final m = minutes.toString().padLeft(2, '0');
+    final s = seconds.toString().padLeft(2, '0');
+
+    return '$h:$m:$s';
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -9,40 +104,49 @@ class LiveMonitorScreen extends StatelessWidget {
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             const SizedBox(height: 10),
             const Text(
               'Live Monitor',
               style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
             ),
+            const SizedBox(height: 8),
+            Text(
+              _isMonitoring
+                  ? 'Monitoring surrounding sound in real time'
+                  : 'Tap start to begin a new monitoring session',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 15, color: Colors.grey.shade700),
+            ),
             const SizedBox(height: 24),
 
             Container(
-              height: 220,
-              width: 220,
+              height: 230,
+              width: 230,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.orange, width: 14),
+                border: Border.all(color: _statusColor, width: 14),
+                color: _statusColor.withOpacity(0.08),
               ),
-              child: const Center(
+              child: Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      '84',
-                      style: TextStyle(
-                        fontSize: 48,
+                      '$_currentDb',
+                      style: const TextStyle(
+                        fontSize: 50,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    Text('dB', style: TextStyle(fontSize: 20)),
-                    SizedBox(height: 8),
+                    const Text('dB', style: TextStyle(fontSize: 20)),
+                    const SizedBox(height: 8),
                     Text(
-                      'High Exposure',
+                      _riskStatus,
                       style: TextStyle(
-                        color: Colors.red,
-                        fontWeight: FontWeight.w600,
+                        color: _statusColor,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
                       ),
                     ),
                   ],
@@ -56,35 +160,76 @@ class LiveMonitorScreen extends StatelessWidget {
               child: ListTile(
                 leading: const Icon(Icons.timer),
                 title: const Text('Session Duration'),
-                subtitle: const Text('00:18:24'),
+                subtitle: Text(_formatDuration(_secondsElapsed)),
               ),
             ),
             const SizedBox(height: 12),
+
             Card(
               child: ListTile(
                 leading: const Icon(Icons.warning_amber_rounded),
                 title: const Text('Risk Status'),
-                subtitle: const Text('Approaching unsafe level'),
+                subtitle: Text(_riskStatus),
               ),
             ),
             const SizedBox(height: 12),
+
             Card(
               child: ListTile(
                 leading: const Icon(Icons.place_outlined),
-                title: const Text('Location'),
-                subtitle: const Text('Workshop'),
+                title: const Text('Estimated Location Type'),
+                subtitle: Text(_locationLabel),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.mic),
+                title: const Text('Monitoring State'),
+                subtitle: Text(_isMonitoring ? 'Active' : 'Stopped'),
               ),
             ),
 
             const SizedBox(height: 24),
 
+            if (!_isMonitoring)
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _startMonitoring,
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('Start Session'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                ),
+              ),
+
+            if (_isMonitoring)
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _stopMonitoring,
+                  icon: const Icon(Icons.stop),
+                  label: const Text('Stop Session'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ),
+
+            const SizedBox(height: 12),
+
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.stop),
-                label: const Text('Stop Session'),
-                style: ElevatedButton.styleFrom(
+              child: OutlinedButton.icon(
+                onPressed: _resetSession,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Reset Session'),
+                style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
               ),
