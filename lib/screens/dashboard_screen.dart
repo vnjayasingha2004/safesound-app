@@ -1,23 +1,21 @@
 import 'package:flutter/material.dart';
 
 class DashboardScreen extends StatelessWidget {
-  const DashboardScreen({super.key});
+  final ValueChanged<int> onTabSelected;
+
+  const DashboardScreen({super.key, required this.onTabSelected});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('SafeSound Dashboard'),
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
+    return SafeArea(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Hello, User',
-              style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+              'SafeSound Dashboard',
+              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 6),
             Text(
@@ -116,21 +114,21 @@ class DashboardScreen extends StatelessWidget {
             const SizedBox(height: 12),
 
             _buildActionButton(
-              context,
               label: 'Start Live Monitoring',
               icon: Icons.mic,
+              onPressed: () => onTabSelected(1),
             ),
             const SizedBox(height: 12),
             _buildActionButton(
-              context,
               label: 'View History',
               icon: Icons.bar_chart,
+              onPressed: () => onTabSelected(2),
             ),
             const SizedBox(height: 12),
             _buildActionButton(
-              context,
               label: 'Open Settings',
               icon: Icons.settings,
+              onPressed: () => onTabSelected(3),
             ),
 
             const SizedBox(height: 24),
@@ -186,19 +184,15 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButton(
-    BuildContext context, {
+  Widget _buildActionButton({
     required String label,
     required IconData icon,
+    required VoidCallback onPressed,
   }) {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
-        onPressed: () {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('$label tapped')));
-        },
+        onPressed: onPressed,
         icon: Icon(icon),
         label: Text(label),
         style: ElevatedButton.styleFrom(
