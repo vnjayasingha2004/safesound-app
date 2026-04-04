@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../app/app_settings.dart';
+import '../app/monitor_settings.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -9,11 +10,11 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _alertsEnabled = true;
+  bool _alertsEnabled = alertsEnabledNotifier.value;
   bool _weeklyReminder = true;
   bool _microphonePermission = true;
-  bool _protectiveTips = true;
-  double _alertThreshold = 85;
+  bool _protectiveTips = protectiveTipsNotifier.value;
+  double _alertThreshold = alertThresholdNotifier.value;
 
   void _resetDefaults() {
     setState(() {
@@ -23,6 +24,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _protectiveTips = true;
       _alertThreshold = 85;
       themeModeNotifier.value = ThemeMode.light;
+      alertsEnabledNotifier.value = true;
+      protectiveTipsNotifier.value = true;
+      alertThresholdNotifier.value = 85;
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -78,6 +82,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       onChanged: (value) {
                         setState(() {
                           _alertsEnabled = value;
+                          alertsEnabledNotifier.value = value;
                         });
                       },
                     ),
@@ -104,6 +109,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       onChanged: (value) {
                         setState(() {
                           _protectiveTips = value;
+                          protectiveTipsNotifier.value = value;
                         });
                       },
                     ),
@@ -157,6 +163,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       onChanged: (value) {
                         setState(() {
                           _alertThreshold = value;
+                          alertThresholdNotifier.value = value;
                         });
                       },
                     ),
