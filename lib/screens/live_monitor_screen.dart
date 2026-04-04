@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../data/session_store.dart';
+import '../models/session_model.dart';
 
 class LiveMonitorScreen extends StatefulWidget {
   const LiveMonitorScreen({super.key});
@@ -13,6 +15,8 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
   bool _isMonitoring = false;
   int _secondsElapsed = 0;
   int _currentIndex = 0;
+
+  final List<int> _recordedLevels = [];
 
   final List<int> _mockNoiseLevels = [
     58,
@@ -31,10 +35,22 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
 
   int get _currentDb => _mockNoiseLevels[_currentIndex];
 
+  double get _averageDb {
+    if (_recordedLevels.isEmpty) return _currentDb.toDouble();
+    final total = _recordedLevels.reduce((a, b) => a + b);
+    return total / _recordedLevels.length;
+  }
+
   String get _riskStatus {
     if (_currentDb < 70) return 'Safe';
     if (_currentDb < 85) return 'Moderate';
     return 'High Exposure';
+  }
+
+  String get _sessionRiskStatus {
+    if (_averageDb < 70) return 'Safe';
+    if (_averageDb < 85) return 'Moderate';
+    return 'High';
   }
 
   Color get _statusColor {
@@ -54,12 +70,17 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
 
     setState(() {
       _isMonitoring = true;
+      _secondsElapsed = 0;
+      _currentIndex = 0;
+      _recordedLevels.clear();
+      _recordedLevels.add(_currentDb);
     });
 
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
         _secondsElapsed++;
         _currentIndex = (_currentIndex + 1) % _mockNoiseLevels.length;
+        _recordedLevels.add(_currentDb);
       });
     });
   }
@@ -77,7 +98,28 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
       _isMonitoring = false;
       _secondsElapsed = 0;
       _currentIndex = 0;
+      _recordedLevels.clear();
     });
+  }
+
+  void _saveSession() {
+    if (_secondsElapsed == 0 || _recordedLevels.isEmpty) return;
+
+    final newSession = SessionModel(
+      date: _formatDate(DateTime.now()),
+      place: _locationLabel,
+      averageDb: _averageDb.round(),
+      duration: _formatDuration(_secondsElapsed),
+      riskLevel: _sessionRiskStatus,
+    );
+
+    addSessionToHistory(newSession);
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Session saved to history')));
+
+    _resetSession();
   }
 
   String _formatDuration(int totalSeconds) {
@@ -90,6 +132,25 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
     final s = seconds.toString().padLeft(2, '0');
 
     return '$h:$m:$s';
+  }
+
+  String _formatDate(DateTime date) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+
+    return '${months[date.month - 1]} ${date.day}';
   }
 
   @override
@@ -168,8 +229,17 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
             Card(
               child: ListTile(
                 leading: const Icon(Icons.warning_amber_rounded),
-                title: const Text('Risk Status'),
+                title: const Text('Current Risk Status'),
                 subtitle: Text(_riskStatus),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.graphic_eq),
+                title: const Text('Average Session Level'),
+                subtitle: Text('${_averageDb.round()} dB'),
               ),
             ),
             const SizedBox(height: 12),
@@ -193,7 +263,7 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
 
             const SizedBox(height: 24),
 
-            if (!_isMonitoring)
+            if (!_isMonitoring && _secondsElapsed == 0)
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -221,19 +291,31 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
                 ),
               ),
 
-            const SizedBox(height: 12),
-
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _resetSession,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Reset Session'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+            if (!_isMonitoring && _secondsElapsed > 0) ...[
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _saveSession,
+                  icon: const Icon(Icons.save),
+                  label: const Text('Save Session'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
                 ),
               ),
-            ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _resetSession,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Discard Session'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
