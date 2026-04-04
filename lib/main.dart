@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import 'app/app_settings.dart';
+import 'app/app_theme.dart';
 import 'data/session_store.dart';
 import 'screens/main_navigation.dart';
+import 'data/notification_store.dart';
+import 'services/local_notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeSessionHistory();
+  await initializeNotifications();
+  await LocalNotificationService.initialize();
   runApp(const SafeSoundApp());
 }
 
@@ -21,24 +26,8 @@ class SafeSoundApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           title: 'SafeSound',
           themeMode: currentThemeMode,
-          theme: ThemeData(
-            useMaterial3: true,
-            colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-            scaffoldBackgroundColor: const Color(0xFFF5F7FB),
-            appBarTheme: const AppBarTheme(
-              centerTitle: true,
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-            ),
-          ),
-          darkTheme: ThemeData(
-            useMaterial3: true,
-            brightness: Brightness.dark,
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.blue,
-              brightness: Brightness.dark,
-            ),
-          ),
+          theme: AppTheme.lightTheme(),
+          darkTheme: AppTheme.darkTheme(),
           home: const MainNavigation(),
         );
       },

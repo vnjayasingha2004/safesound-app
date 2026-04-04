@@ -1,8 +1,14 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
+
 import '../app/monitor_settings.dart';
+import '../data/notification_store.dart';
 import '../data/session_store.dart';
+import '../models/app_notification_model.dart';
 import '../models/session_model.dart';
+import '../services/local_notification_service.dart';
+import 'location_picker_screen.dart';
 
 class LiveMonitorScreen extends StatefulWidget {
   const LiveMonitorScreen({super.key});
@@ -35,6 +41,8 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
     64,
   ];
 
+  String? _selectedLocationLabel;
+
   int get _currentDb => _mockNoiseLevels[_currentIndex];
 
   double get _averageDb {
@@ -65,10 +73,41 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
     return Colors.red;
   }
 
-  String get _locationLabel {
+  String get _estimatedLocationLabel {
     if (_currentDb < 70) return 'Library Area';
     if (_currentDb < _alertThreshold) return 'Main Road';
     return 'Workshop';
+  }
+
+  String get _locationLabel =>
+      _selectedLocationLabel ?? _estimatedLocationLabel;
+
+  String _formatNotificationTime(DateTime dateTime) {
+    final hour = dateTime.hour % 12 == 0 ? 12 : dateTime.hour % 12;
+    final minute = dateTime.minute.toString().padLeft(2, '0');
+    final period = dateTime.hour >= 12 ? 'PM' : 'AM';
+
+    return '${_formatDate(dateTime)} • $hour:$minute $period';
+  }
+
+  Future<void> _openLocationPicker() async {
+    final result = await Navigator.push<LocationPickResult>(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            LocationPickerScreen(initialLabel: _selectedLocationLabel),
+      ),
+    );
+
+    if (result == null || !mounted) return;
+
+    setState(() {
+      _selectedLocationLabel = result.label;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Location selected: ${result.label}')),
+    );
   }
 
   void _startMonitoring() {
@@ -94,13 +133,35 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
     });
   }
 
-  void _checkUnsafeAlert() {
+  Future<void> _checkUnsafeAlert() async {
     if (!alertsEnabledNotifier.value) return;
     if (!_isMonitoring) return;
     if (!_isAboveThreshold) return;
     if (_alertShownForCurrentSession) return;
 
     _alertShownForCurrentSession = true;
+
+    final now = DateTime.now();
+
+    await addAppNotification(
+      AppNotificationModel(
+        id: now.microsecondsSinceEpoch.toString(),
+        title: 'Unsafe Noise Alert',
+        message:
+            'Sound reached $_currentDb dB, above your threshold of ${_alertThreshold.toInt()} dB.',
+        type: 'warning',
+        time: _formatNotificationTime(now),
+        isRead: false,
+      ),
+    );
+
+    await LocalNotificationService.showNoiseAlert(
+      title: 'Unsafe Noise Alert',
+      body:
+          'Sound reached $_currentDb dB, above your threshold of ${_alertThreshold.toInt()} dB.',
+    );
+
+    if (!mounted) return;
 
     showDialog<void>(
       context: context,
@@ -362,9 +423,11 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
 
                         Card(
                           child: ListTile(
+                            onTap: _openLocationPicker,
                             leading: const Icon(Icons.place_outlined),
-                            title: const Text('Estimated Location Type'),
+                            title: const Text('Location'),
                             subtitle: Text(_locationLabel),
+                            trailing: const Icon(Icons.chevron_right_rounded),
                           ),
                         ),
                         const SizedBox(height: 12),
