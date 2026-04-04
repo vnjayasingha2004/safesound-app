@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dashboard_screen.dart';
 import 'live_monitor_screen.dart';
 import 'history_screen.dart';
+import 'trends_screen.dart';
 import 'settings_screen.dart';
 
 class MainNavigation extends StatefulWidget {
@@ -23,6 +24,7 @@ class _MainNavigationState extends State<MainNavigation> {
       DashboardScreen(onTabSelected: _onItemTapped),
       const LiveMonitorScreen(),
       const HistoryScreen(),
+      const TrendsScreen(),
       const SettingsScreen(),
     ];
   }
@@ -55,6 +57,11 @@ class _MainNavigationState extends State<MainNavigation> {
             icon: Icon(Icons.history_outlined),
             selectedIcon: Icon(Icons.history),
             label: 'History',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.show_chart_outlined),
+            selectedIcon: Icon(Icons.show_chart),
+            label: 'Trends',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),

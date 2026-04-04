@@ -121,14 +121,20 @@ class DashboardScreen extends StatelessWidget {
             const SizedBox(height: 12),
             _buildActionButton(
               label: 'View History',
-              icon: Icons.bar_chart,
+              icon: Icons.history,
               onPressed: () => onTabSelected(2),
+            ),
+            const SizedBox(height: 12),
+            _buildActionButton(
+              label: 'View Trends',
+              icon: Icons.show_chart,
+              onPressed: () => onTabSelected(3),
             ),
             const SizedBox(height: 12),
             _buildActionButton(
               label: 'Open Settings',
               icon: Icons.settings,
-              onPressed: () => onTabSelected(3),
+              onPressed: () => onTabSelected(4),
             ),
 
             const SizedBox(height: 24),
