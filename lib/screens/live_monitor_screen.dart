@@ -36,8 +36,23 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
   bool _isAlertDialogOpen = false;
   bool _aiFallbackNoticeShown = false;
 
+  bool _isMeaningfulPredictionLabel(String label) {
+    return label.isNotEmpty &&
+        label != 'Waiting for audio' &&
+        label != 'Listening...' &&
+        label != 'AI starting...' &&
+        label != 'AI unavailable';
+  }
+
   static const Duration _unsafeExposureDelay = Duration(seconds: 3);
   static const Duration _unsafeAlertCooldown = Duration(seconds: 15);
+
+  DateTime? _lastSceneUiCommitAt;
+  DateTime? _lastCoachUiCommitAt;
+
+  static const Duration _sceneUiCommitInterval = Duration(milliseconds: 1400);
+  static const Duration _coachUiCommitInterval = Duration(milliseconds: 900);
+  static const Duration _aiMetaRefreshInterval = Duration(milliseconds: 1800);
 
   double _currentDb = 0;
   double _smoothedStatusDb = 0;
@@ -119,14 +134,26 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
 
   String get _riskStatus {
     if (_statusDb < 70) return 'Safe';
-    if (_statusDb < _alertThreshold) return 'Moderate';
-    return 'High Exposure';
+    if (_statusDb < _alertThreshold) return 'Caution';
+    return 'Unsafe';
   }
 
   String get _sessionRiskStatus {
     if (_averageDb < 70) return 'Safe';
-    if (_averageDb < _alertThreshold) return 'Moderate';
-    return 'High';
+    if (_averageDb < _alertThreshold) return 'Caution';
+    return 'Unsafe';
+  }
+
+  String get _riskGuidance {
+    if (_statusDb < 70) return 'Comfortable right now';
+    if (_statusDb < _alertThreshold) return 'Watch your exposure time';
+    return 'Above your safe limit';
+  }
+
+  Color get _aiStatusColor {
+    if (_aiStatusText == 'Stable') return Colors.green.shade700;
+    if (_aiStatusText == 'Stopped') return Colors.grey.shade700;
+    return Colors.orange.shade700;
   }
 
   Color get _statusColor {
@@ -244,6 +271,176 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
     secondsElapsed: _secondsElapsed,
     unsafeAlertCount: _unsafeAlertCount,
   );
+
+  Widget _buildHeroCard({
+    required IconData icon,
+    required String title,
+    required String value,
+    required String subtitle,
+    required Color accentColor,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: accentColor.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: accentColor.withOpacity(0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: accentColor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: accentColor,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    String? trailingText,
+    Color? iconColor,
+    VoidCallback? onTap,
+  }) {
+    return Card(
+      child: ListTile(
+        onTap: onTap,
+        leading: Icon(icon, color: iconColor),
+        title: Text(title),
+        subtitle: Text(subtitle),
+        trailing: trailingText != null
+            ? Text(
+                trailingText,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              )
+            : (onTap != null ? const Icon(Icons.chevron_right_rounded) : null),
+      ),
+    );
+  }
+
+  Widget _buildSummaryPill(String label, String value, {Color? color}) {
+    final accent = color ?? Colors.blue.shade700;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: accent.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accent.withOpacity(0.20)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.shade700,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: accent,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSessionSummaryCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.summarize_outlined),
+                SizedBox(width: 8),
+                Text(
+                  'Session Summary',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                _buildSummaryPill('Average', '${_averageDb.round()} dB'),
+                _buildSummaryPill('Peak', '${_peakDb} dB'),
+                _buildSummaryPill('Duration', _formatDuration(_secondsElapsed)),
+                _buildSummaryPill(
+                  'Exposure Score',
+                  '$_exposureScore/100',
+                  color: Colors.orange.shade700,
+                ),
+                _buildSummaryPill(
+                  'Environment',
+                  _soundSceneLabel,
+                  color: Colors.purple.shade700,
+                ),
+                _buildSummaryPill(
+                  'Alerts',
+                  '$_unsafeAlertCount',
+                  color: _unsafeAlertCount > 0
+                      ? Colors.red.shade700
+                      : Colors.green.shade700,
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Hearing Advice',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: Colors.grey.shade800,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(_coachSummary),
+          ],
+        ),
+      ),
+    );
+  }
 
   void _setManualSoundType(String? value) {
     _soundClassifierService.setManualOverride(value);
@@ -392,24 +589,39 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
   void _handlePrediction(SoundClassificationResult result) {
     if (!mounted || !_isMonitoring) return;
 
-    final topPredictions = List<MapEntry<String, double>>.from(
+    final now = DateTime.now();
+    final liveDb = result.smoothedDb > 0 ? result.smoothedDb : result.currentDb;
+    final nextLabel = result.label.isEmpty ? 'Waiting for audio' : result.label;
+
+    final nextTopPredictions = List<MapEntry<String, double>>.from(
       result.topPredictions,
     )..sort((a, b) => b.value.compareTo(a.value));
 
-    final liveDb = result.smoothedDb > 0 ? result.smoothedDb : result.currentDb;
+    final nextIsMeaningful = _isMeaningfulPredictionLabel(nextLabel);
+    final currentIsMeaningful = _isMeaningfulPredictionLabel(_aiDetectedLabel);
+    final labelChanged = nextLabel != _aiDetectedLabel;
+
+    final enoughSceneTime =
+        _lastSceneUiCommitAt == null ||
+        now.difference(_lastSceneUiCommitAt!) >= _sceneUiCommitInterval;
+
+    final enoughMetaTime =
+        _lastSceneUiCommitAt == null ||
+        now.difference(_lastSceneUiCommitAt!) >= _aiMetaRefreshInterval;
+
+    final shouldCommitSceneNow =
+        !nextIsMeaningful ||
+        (!currentIsMeaningful && result.isStable) ||
+        (labelChanged && result.isStable && enoughSceneTime) ||
+        (!labelChanged &&
+            ((result.confidence - _aiConfidence).abs() >= 0.10 ||
+                enoughMetaTime));
+
+    final shouldUpdateCoach =
+        _lastCoachUiCommitAt == null ||
+        now.difference(_lastCoachUiCommitAt!) >= _coachUiCommitInterval;
 
     setState(() {
-      final liveDb = result.smoothedDb > 0
-          ? result.smoothedDb
-          : result.currentDb;
-      final nextCoachDb = _coachDisplayDb <= 0
-          ? liveDb
-          : (_coachDisplayDb + (0.10 * (liveDb - _coachDisplayDb)));
-
-      _currentDb = result.currentDb;
-      _smoothedStatusDb = liveDb;
-      _coachDisplayDb = nextCoachDb;
-
       _usingAiScene = true;
       _currentDb = result.currentDb;
       _smoothedStatusDb = liveDb;
@@ -421,12 +633,21 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
         }
       }
 
-      _aiDetectedLabel = result.label.isEmpty
-          ? 'Waiting for audio'
-          : result.label;
-      _aiConfidence = result.confidence;
-      _aiIsStable = result.isStable;
-      _aiTopPredictions = topPredictions;
+      if (_coachDisplayDb <= 0) {
+        _coachDisplayDb = liveDb;
+        _lastCoachUiCommitAt = now;
+      } else if (shouldUpdateCoach) {
+        _coachDisplayDb = _coachDisplayDb + (0.18 * (liveDb - _coachDisplayDb));
+        _lastCoachUiCommitAt = now;
+      }
+
+      if (shouldCommitSceneNow) {
+        _aiDetectedLabel = nextLabel;
+        _aiConfidence = result.confidence;
+        _aiIsStable = result.isStable;
+        _aiTopPredictions = nextTopPredictions.take(2).toList();
+        _lastSceneUiCommitAt = now;
+      }
     });
 
     _handleThresholdTracking();
@@ -514,6 +735,9 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
       _usingAiScene = false;
       _aiFallbackNoticeShown = false;
       _aiTopPredictions = const [];
+      _coachDisplayDb = 0;
+      _lastSceneUiCommitAt = null;
+      _lastCoachUiCommitAt = null;
     });
 
     _durationTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -630,11 +854,6 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
 
     setState(() {
       _isMonitoring = false;
-      _usingAiScene = false;
-      _aiDetectedLabel = 'Waiting for audio';
-      _aiConfidence = 0.0;
-      _aiIsStable = false;
-      _aiTopPredictions = const [];
     });
   }
 
@@ -654,6 +873,7 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
       _manualSoundTypeOverride = null;
       _currentDb = 0;
       _smoothedStatusDb = 0;
+      _coachDisplayDb = 0;
       _recordedLevels.clear();
       _aiDetectedLabel = 'Waiting for audio';
       _aiConfidence = 0.0;
@@ -661,6 +881,8 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
       _usingAiScene = false;
       _aiFallbackNoticeShown = false;
       _aiTopPredictions = const [];
+      _lastSceneUiCommitAt = null;
+      _lastCoachUiCommitAt = null;
     });
   }
 
@@ -781,6 +1003,7 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
     return SafeArea(
       child: ValueListenableBuilder<double>(
@@ -792,13 +1015,20 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
               return ValueListenableBuilder<bool>(
                 valueListenable: protectiveTipsNotifier,
                 builder: (context, protectiveTips, ___) {
+                  final showSessionSummary =
+                      !_isMonitoring &&
+                      _secondsElapsed > 0 &&
+                      _recordedLevels.isNotEmpty;
+
                   return SingleChildScrollView(
                     padding: const EdgeInsets.all(16),
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         const SizedBox(height: 10),
                         const Text(
                           'Live Monitor',
+                          textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 28,
                             fontWeight: FontWeight.bold,
@@ -819,39 +1049,44 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
 
                         _buildWarningBanner(),
 
-                        Container(
-                          height: 230,
-                          width: 230,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: _statusColor, width: 14),
-                            color: _statusColor.withOpacity(0.08),
-                          ),
-                          child: Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  '${_currentDb.round()}',
-                                  style: const TextStyle(
-                                    fontSize: 50,
-                                    fontWeight: FontWeight.bold,
+                        Center(
+                          child: Container(
+                            height: 230,
+                            width: 230,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: _statusColor,
+                                width: 14,
+                              ),
+                              color: _statusColor.withOpacity(0.08),
+                            ),
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    '${_statusDb.round()}',
+                                    style: const TextStyle(
+                                      fontSize: 50,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
-                                ),
-                                const Text(
-                                  'dB',
-                                  style: TextStyle(fontSize: 20),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  _riskStatus,
-                                  style: TextStyle(
-                                    color: _statusColor,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 16,
+                                  const Text(
+                                    'dB',
+                                    style: TextStyle(fontSize: 20),
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    _riskStatus,
+                                    style: TextStyle(
+                                      color: _statusColor,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -859,92 +1094,66 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
                         const SizedBox(height: 12),
 
                         Text(
-                          'Smoothed status level: ${_statusDb.round()} dB',
+                          'Live protected estimate: ${_statusDb.round()} dB',
+                          textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 13,
                             color: Colors.grey.shade700,
                           ),
                         ),
 
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 20),
 
-                        Card(
-                          child: ListTile(
-                            leading: const Icon(Icons.timer),
-                            title: const Text('Session Duration'),
-                            subtitle: Text(_formatDuration(_secondsElapsed)),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-
-                        Card(
-                          child: ListTile(
-                            leading: const Icon(Icons.warning_amber_rounded),
-                            title: const Text('Current Risk Status'),
-                            subtitle: Text(_riskStatus),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-
-                        Card(
-                          child: ListTile(
-                            leading: const Icon(Icons.notifications_active),
-                            title: const Text('Alert Threshold'),
-                            subtitle: Text('${threshold.toInt()} dB'),
-                            trailing: Text(
-                              alertsEnabled ? 'Alerts On' : 'Alerts Off',
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildHeroCard(
+                                icon: Icons.health_and_safety_outlined,
+                                title: 'Current Risk',
+                                value: _riskStatus,
+                                subtitle: _riskGuidance,
+                                accentColor: _statusColor,
+                              ),
                             ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-
-                        Card(
-                          child: ListTile(
-                            leading: const Icon(Icons.graphic_eq),
-                            title: const Text('Average Session Level'),
-                            subtitle: Text('${_averageDb.round()} dB'),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-
-                        Card(
-                          child: ListTile(
-                            leading: const Icon(Icons.schedule),
-                            title: const Text('Remaining Safe Time'),
-                            subtitle: Text(_remainingSafeTimeLabel),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-
-                        Card(
-                          child: ListTile(
-                            leading: const Icon(
-                              Icons.record_voice_over_outlined,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildHeroCard(
+                                icon: Icons.schedule,
+                                title: 'Remaining Safe Time',
+                                value: _remainingSafeTimeLabel,
+                                subtitle: 'Based on current sound level',
+                                accentColor: Colors.blue.shade700,
+                              ),
                             ),
-                            title: const Text('Conversation Quality'),
-                            subtitle: Text(_conversationStatus),
-                            trailing: Text('${_statusDb.round()} dB'),
-                          ),
+                          ],
                         ),
+
                         const SizedBox(height: 12),
 
-                        Card(
-                          child: ListTile(
-                            leading: const Icon(Icons.psychology_alt_outlined),
-                            title: const Text('Noise Coach'),
-                            subtitle: Text(_coachSummary),
-                          ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildHeroCard(
+                                icon: Icons.record_voice_over_outlined,
+                                title: 'Conversation Quality',
+                                value: _conversationStatus,
+                                subtitle: '${_coachDb.round()} dB right now',
+                                accentColor: Colors.teal.shade700,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildHeroCard(
+                                icon: Icons.insights_outlined,
+                                title: 'Exposure Score',
+                                value: '$_exposureScore/100',
+                                subtitle: 'Alerts: $_unsafeAlertCount',
+                                accentColor: Colors.orange.shade700,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 12),
 
-                        Card(
-                          child: ListTile(
-                            leading: const Icon(Icons.insights_outlined),
-                            title: const Text('Exposure Load'),
-                            subtitle: Text('${_exposureScore}/100'),
-                            trailing: Text('Alerts: $_unsafeAlertCount'),
-                          ),
-                        ),
                         const SizedBox(height: 12),
 
                         Card(
@@ -953,15 +1162,13 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Row(
-                                  children: const [
+                                const Row(
+                                  children: [
                                     Icon(Icons.auto_awesome_outlined),
                                     SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
-                                        'Likely Sound Scene',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
+                                        'Detected Environment',
                                         style: TextStyle(
                                           fontSize: 16,
                                           fontWeight: FontWeight.bold,
@@ -972,7 +1179,7 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
                                 ),
                                 const SizedBox(height: 6),
                                 const Text(
-                                  'AI scene detection is approximate.',
+                                  'This is an AI estimate and may change with new audio.',
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: Color(0xFF757575),
@@ -982,35 +1189,31 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
                                 Text(
                                   _soundSceneLabel,
                                   style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
                                   ),
                                 ),
-                                const SizedBox(height: 4),
+                                const SizedBox(height: 6),
                                 Text(
                                   'Confidence: ${(_soundSceneConfidence * 100).round()}%',
                                   style: TextStyle(color: Colors.grey.shade700),
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  'Engine: $_soundSceneEngineLabel',
+                                  'Source: $_soundSceneEngineLabel',
                                   style: TextStyle(color: Colors.grey.shade700),
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  'AI status: $_aiStatusText',
+                                  'Status: $_aiStatusText',
                                   style: TextStyle(
-                                    color: _aiStatusText == 'Stable'
-                                        ? Colors.green.shade700
-                                        : (_aiStatusText == 'Stopped'
-                                              ? Colors.grey.shade700
-                                              : Colors.orange.shade700),
+                                    color: _aiStatusColor,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
                                 if (_usingAiScene &&
                                     _aiTopPredictions.isNotEmpty) ...[
-                                  const SizedBox(height: 8),
+                                  const SizedBox(height: 10),
                                   const Text(
                                     'Top AI predictions',
                                     style: TextStyle(
@@ -1098,27 +1301,60 @@ class _LiveMonitorScreenState extends State<LiveMonitorScreen> {
                             ),
                           ),
                         ),
+
                         const SizedBox(height: 12),
 
                         Card(
                           child: ListTile(
-                            onTap: _openLocationPicker,
-                            leading: const Icon(Icons.place_outlined),
-                            title: const Text('Location'),
-                            subtitle: Text(_locationLabel),
-                            trailing: const Icon(Icons.chevron_right_rounded),
+                            leading: const Icon(Icons.hearing_outlined),
+                            title: const Text('Hearing Advice'),
+                            subtitle: Text(_coachSummary),
                           ),
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        if (showSessionSummary) ...[
+                          _buildSessionSummaryCard(),
+                          const SizedBox(height: 12),
+                        ],
+
+                        _buildInfoCard(
+                          icon: Icons.timer_outlined,
+                          title: 'Session Duration',
+                          subtitle: _formatDuration(_secondsElapsed),
                         ),
                         const SizedBox(height: 12),
 
-                        Card(
-                          child: ListTile(
-                            leading: const Icon(Icons.mic),
-                            title: const Text('Monitoring State'),
-                            subtitle: Text(
-                              _isMonitoring ? 'Active' : 'Stopped',
-                            ),
-                          ),
+                        _buildInfoCard(
+                          icon: Icons.notifications_active_outlined,
+                          title: 'Alert Threshold',
+                          subtitle: '${threshold.toInt()} dB',
+                          trailingText: alertsEnabled
+                              ? 'Alerts On'
+                              : 'Alerts Off',
+                        ),
+                        const SizedBox(height: 12),
+
+                        _buildInfoCard(
+                          icon: Icons.graphic_eq_outlined,
+                          title: 'Average Session Level',
+                          subtitle: '${_averageDb.round()} dB',
+                        ),
+                        const SizedBox(height: 12),
+
+                        _buildInfoCard(
+                          icon: Icons.place_outlined,
+                          title: 'Location',
+                          subtitle: _locationLabel,
+                          onTap: _openLocationPicker,
+                        ),
+                        const SizedBox(height: 12),
+
+                        _buildInfoCard(
+                          icon: Icons.mic_none_outlined,
+                          title: 'Monitoring State',
+                          subtitle: _isMonitoring ? 'Active' : 'Stopped',
                         ),
 
                         const SizedBox(height: 24),

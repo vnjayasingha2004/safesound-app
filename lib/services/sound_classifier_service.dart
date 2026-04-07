@@ -146,14 +146,20 @@ class SoundClassifierService {
   int _sampleRate = 16000;
   double _smoothedDb = 0.0;
 
-  static const double _emaAlpha = 0.18;
-  static const int _requiredFramesToSwitch = 4;
-  static const double _dbSmoothingAlpha = 0.20;
+  DateTime? _lastLegacyEmitAt;
+  String? _lastLegacyLabel;
+  double _lastLegacySmoothedDb = 0.0;
+  bool _hasLegacyEmit = false;
+
+  static const double _emaAlpha = 0.14;
+  static const int _requiredFramesToSwitch = 5;
+  static const double _dbSmoothingAlpha = 0.18;
   static const int _targetChunkBytes = 2048;
 
-  static const Duration _minSceneHold = Duration(milliseconds: 1400);
-  static const double _sceneSwitchMinTopScore = 0.22;
-  static const double _sceneSwitchMinMargin = 0.025;
+  static const Duration _minSceneHold = Duration(milliseconds: 1800);
+  static const double _sceneSwitchMinTopScore = 0.26;
+  static const double _sceneSwitchMinMargin = 0.04;
+  static const Duration _legacyEmitMinInterval = Duration(milliseconds: 220);
 
   DateTime? _lastSceneChangeAt;
 
@@ -247,6 +253,11 @@ class SoundClassifierService {
     _pendingBytes.clear();
     _smoothedDb = 0.0;
     _lastChunkAt = null;
+
+    _lastLegacyEmitAt = null;
+    _lastLegacyLabel = null;
+    _lastLegacySmoothedDb = 0.0;
+    _hasLegacyEmit = false;
   }
 
   void dispose() {
@@ -257,6 +268,11 @@ class SoundClassifierService {
     _micSubscription = null;
     _pendingBytes.clear();
     _smoothedDb = 0.0;
+
+    _lastLegacyEmitAt = null;
+    _lastLegacyLabel = null;
+    _lastLegacySmoothedDb = 0.0;
+    _hasLegacyEmit = false;
 
     try {
       _recorder.dispose();
@@ -281,6 +297,11 @@ class SoundClassifierService {
     _lastWinningScene = null;
     _winningSceneStreak = 0;
     _lastSceneChangeAt = null;
+
+    _lastLegacyEmitAt = null;
+    _lastLegacyLabel = null;
+    _lastLegacySmoothedDb = 0.0;
+    _hasLegacyEmit = false;
 
     for (final scene in SoundScene.values) {
       _emaScores[scene] = 1 / SoundScene.values.length;
@@ -396,6 +417,12 @@ class SoundClassifierService {
     final waiting = ScenePrediction.waiting();
     _latestPrediction = waiting;
     _predictionController.add(waiting);
+
+    _lastLegacyEmitAt = DateTime.now();
+    _lastLegacyLabel = 'Waiting for audio';
+    _lastLegacySmoothedDb = 0.0;
+    _hasLegacyEmit = true;
+
     _legacyController.add(
       const SoundClassificationResult(
         currentDb: 0,
@@ -431,13 +458,32 @@ class SoundClassifierService {
         ? rawSorted.first
         : const MapEntry<String, double>('Waiting for audio', 0.0);
 
+    final label = prediction.waitingForAudio
+        ? 'Waiting for audio'
+        : prediction.label;
+
+    final now = DateTime.now();
+    final labelChanged = _lastLegacyLabel != label;
+    final dueByTime =
+        _lastLegacyEmitAt == null ||
+        now.difference(_lastLegacyEmitAt!) >= _legacyEmitMinInterval;
+    final dueByDb =
+        !_hasLegacyEmit || (smoothedDb - _lastLegacySmoothedDb).abs() >= 1.5;
+
+    if (!labelChanged && !dueByTime && !dueByDb) {
+      return;
+    }
+
+    _lastLegacyEmitAt = now;
+    _lastLegacyLabel = label;
+    _lastLegacySmoothedDb = smoothedDb;
+    _hasLegacyEmit = true;
+
     _legacyController.add(
       SoundClassificationResult(
         currentDb: rawDb,
         smoothedDb: smoothedDb,
-        label: prediction.waitingForAudio
-            ? 'Waiting for audio'
-            : prediction.label,
+        label: label,
         rawLabel: prediction.waitingForAudio ? 'Waiting for audio' : rawTop.key,
         scene: prediction.waitingForAudio ? 'Unknown' : prediction.scene.label,
         confidence: prediction.confidence,
