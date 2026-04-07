@@ -21,7 +21,7 @@ class _MainNavigationState extends State<MainNavigation> {
   void initState() {
     super.initState();
     _pages = [
-      DashboardScreen(onTabSelected: _onItemTapped),
+      const DashboardScreen(),
       const LiveMonitorScreen(),
       const HistoryScreen(),
       const TrendsScreen(),

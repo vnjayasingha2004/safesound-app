@@ -1,46 +1,90 @@
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models/session_model.dart';
-import 'mock_sessions.dart';
 
-final ValueNotifier<List<SessionModel>> sessionHistoryNotifier = ValueNotifier(
-  [],
-);
+final ValueNotifier<List<SessionModel>> sessionHistoryNotifier =
+    ValueNotifier<List<SessionModel>>([]);
 
-const String _sessionStorageKey = 'saved_sessions';
+const String _sessionHistoryKey = 'session_history';
 
 Future<void> initializeSessionHistory() async {
   final prefs = await SharedPreferences.getInstance();
-  final storedSessions = prefs.getString(_sessionStorageKey);
+  final storedList = prefs.getStringList(_sessionHistoryKey) ?? [];
 
-  if (storedSessions == null || storedSessions.isEmpty) {
-    sessionHistoryNotifier.value = List<SessionModel>.from(mockSessions);
-    await _saveSessionsToStorage(sessionHistoryNotifier.value);
-    return;
+  final sessions = storedList.map((item) {
+    final map = jsonDecode(item) as Map<String, dynamic>;
+    final normalizedMap = _normalizeLegacySessionMap(map);
+    return SessionModel.fromMap(normalizedMap);
+  }).toList();
+
+  sessionHistoryNotifier.value = sessions;
+}
+
+Map<String, dynamic> _normalizeLegacySessionMap(Map<String, dynamic> map) {
+  if (map['createdAt'] != null && (map['createdAt'] as String).isNotEmpty) {
+    return map;
   }
 
-  final List<dynamic> decoded = jsonDecode(storedSessions);
-  sessionHistoryNotifier.value = decoded
-      .map((item) => SessionModel.fromJson(Map<String, dynamic>.from(item)))
+  final legacyDate = map['date'] as String? ?? '';
+  final parsedLegacyDate = _tryParseLegacyDate(legacyDate);
+
+  return {
+    ...map,
+    'createdAt': (parsedLegacyDate ?? DateTime.now()).toIso8601String(),
+  };
+}
+
+DateTime? _tryParseLegacyDate(String value) {
+  final parts = value.trim().split(' ');
+  if (parts.length != 2) return null;
+
+  const monthMap = {
+    'Jan': 1,
+    'Feb': 2,
+    'Mar': 3,
+    'Apr': 4,
+    'May': 5,
+    'Jun': 6,
+    'Jul': 7,
+    'Aug': 8,
+    'Sep': 9,
+    'Oct': 10,
+    'Nov': 11,
+    'Dec': 12,
+  };
+
+  final month = monthMap[parts[0]];
+  final day = int.tryParse(parts[1]);
+
+  if (month == null || day == null) return null;
+
+  final now = DateTime.now();
+  return DateTime(now.year, month, day);
+}
+
+Future<void> _persistSessionHistory() async {
+  final prefs = await SharedPreferences.getInstance();
+
+  final encoded = sessionHistoryNotifier.value
+      .map((session) => jsonEncode(session.toMap()))
       .toList();
+
+  await prefs.setStringList(_sessionHistoryKey, encoded);
 }
 
 Future<void> addSessionToHistory(SessionModel session) async {
-  final updatedSessions = [session, ...sessionHistoryNotifier.value];
-  sessionHistoryNotifier.value = updatedSessions;
-  await _saveSessionsToStorage(updatedSessions);
+  sessionHistoryNotifier.value = [session, ...sessionHistoryNotifier.value];
+  await _persistSessionHistory();
 }
 
-Future<void> clearAllSessions() async {
+List<SessionModel> getSessionHistory() {
+  return sessionHistoryNotifier.value;
+}
+
+Future<void> clearSessionHistory() async {
   sessionHistoryNotifier.value = [];
-  await _saveSessionsToStorage([]);
-}
-
-Future<void> _saveSessionsToStorage(List<SessionModel> sessions) async {
-  final prefs = await SharedPreferences.getInstance();
-  final encoded = jsonEncode(
-    sessions.map((session) => session.toJson()).toList(),
-  );
-  await prefs.setString(_sessionStorageKey, encoded);
+  await _persistSessionHistory();
 }

@@ -10,11 +10,39 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  final List<String> _ageGroups = ['Under 18', '18-40', '41-60', '61+'];
+
   bool _alertsEnabled = alertsEnabledNotifier.value;
   bool _weeklyReminder = true;
   bool _microphonePermission = true;
   bool _protectiveTips = protectiveTipsNotifier.value;
   double _alertThreshold = alertThresholdNotifier.value;
+
+  String _selectedAgeGroup = ageGroupNotifier.value;
+  bool _usesHearingAid = usesHearingAidNotifier.value;
+  bool _autoThreshold = autoThresholdNotifier.value;
+
+  double get _recommendedThreshold => getRecommendedThreshold(
+    ageGroup: _selectedAgeGroup,
+    usesHearingAid: _usesHearingAid,
+  );
+
+  String get _thresholdReason => getThresholdReason(
+    ageGroup: _selectedAgeGroup,
+    usesHearingAid: _usesHearingAid,
+  );
+
+  void _applyAutoThresholdIfNeeded() {
+    if (!_autoThreshold) return;
+
+    final recommended = _recommendedThreshold;
+
+    setState(() {
+      _alertThreshold = recommended;
+    });
+
+    alertThresholdNotifier.value = recommended;
+  }
 
   void _resetDefaults() {
     setState(() {
@@ -22,11 +50,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _weeklyReminder = true;
       _microphonePermission = true;
       _protectiveTips = true;
-      _alertThreshold = 85;
+
+      _selectedAgeGroup = '18-40';
+      _usesHearingAid = false;
+      _autoThreshold = true;
+      _alertThreshold = 85.0;
+
       themeModeNotifier.value = ThemeMode.light;
       alertsEnabledNotifier.value = true;
       protectiveTipsNotifier.value = true;
-      alertThresholdNotifier.value = 85;
+      ageGroupNotifier.value = '18-40';
+      usesHearingAidNotifier.value = false;
+      autoThresholdNotifier.value = true;
+      applyPersonalizedThreshold();
+      _alertThreshold = alertThresholdNotifier.value;
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -50,10 +87,156 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 6),
             Text(
-              'Manage alerts, reminders, theme, and monitoring preferences.',
+              'Manage alerts, reminders, hearing profile, theme, and monitoring preferences.',
               style: TextStyle(fontSize: 15, color: Colors.grey.shade700),
             ),
             const SizedBox(height: 20),
+
+            Card(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Hearing Profile',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: _selectedAgeGroup,
+                      decoration: const InputDecoration(
+                        labelText: 'Age Group',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: _ageGroups.map((group) {
+                        return DropdownMenuItem<String>(
+                          value: group,
+                          child: Text(group),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value == null) return;
+
+                        setState(() {
+                          _selectedAgeGroup = value;
+                          ageGroupNotifier.value = value;
+                        });
+
+                        _applyAutoThresholdIfNeeded();
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Uses Hearing Aid'),
+                      subtitle: const Text(
+                        'Used for personalized safety recommendations',
+                      ),
+                      value: _usesHearingAid,
+                      onChanged: (value) {
+                        setState(() {
+                          _usesHearingAid = value;
+                          usesHearingAidNotifier.value = value;
+                        });
+
+                        _applyAutoThresholdIfNeeded();
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            Card(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Personalized Threshold',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Recommended threshold: ${_recommendedThreshold.toInt()} dB',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _thresholdReason,
+                      style: TextStyle(color: Colors.grey.shade700),
+                    ),
+                    const SizedBox(height: 12),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text(
+                        'Use Personalized Threshold Automatically',
+                      ),
+                      subtitle: const Text(
+                        'Auto-update alerts from age and hearing profile',
+                      ),
+                      value: _autoThreshold,
+                      onChanged: (value) {
+                        setState(() {
+                          _autoThreshold = value;
+                          autoThresholdNotifier.value = value;
+                        });
+
+                        if (value) {
+                          _applyAutoThresholdIfNeeded();
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          final recommended = _recommendedThreshold;
+
+                          setState(() {
+                            _alertThreshold = recommended;
+                          });
+
+                          alertThresholdNotifier.value = recommended;
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Applied recommended threshold: ${recommended.toInt()} dB',
+                              ),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.auto_fix_high),
+                        label: const Text('Apply Recommended Threshold'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
 
             Card(
               shape: RoundedRectangleBorder(
@@ -154,22 +337,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       'Current threshold: ${_alertThreshold.toInt()} dB',
                       style: const TextStyle(fontSize: 15),
                     ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _autoThreshold
+                          ? 'Automatic mode is ON. The threshold follows the hearing profile.'
+                          : 'Automatic mode is OFF. You can set the threshold manually.',
+                      style: TextStyle(color: Colors.grey.shade700),
+                    ),
                     Slider(
                       value: _alertThreshold,
                       min: 60,
                       max: 100,
                       divisions: 8,
                       label: '${_alertThreshold.toInt()} dB',
-                      onChanged: (value) {
-                        setState(() {
-                          _alertThreshold = value;
-                          alertThresholdNotifier.value = value;
-                        });
-                      },
-                    ),
-                    Text(
-                      'Lower values warn earlier, higher values allow more exposure before alerts appear.',
-                      style: TextStyle(color: Colors.grey.shade700),
+                      onChanged: _autoThreshold
+                          ? null
+                          : (value) {
+                              setState(() {
+                                _alertThreshold = value;
+                                alertThresholdNotifier.value = value;
+                              });
+                            },
                     ),
                   ],
                 ),
@@ -231,6 +419,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
+                    _buildSummaryRow('Age Group', _selectedAgeGroup),
+                    _buildSummaryRow(
+                      'Hearing Aid',
+                      _usesHearingAid ? 'Yes' : 'No',
+                    ),
+                    _buildSummaryRow(
+                      'Auto Threshold',
+                      _autoThreshold ? 'On' : 'Off',
+                    ),
+                    _buildSummaryRow(
+                      'Recommended Threshold',
+                      '${_recommendedThreshold.toInt()} dB',
+                    ),
                     _buildSummaryRow('Alerts', _alertsEnabled ? 'On' : 'Off'),
                     _buildSummaryRow(
                       'Weekly Reminder',
@@ -246,7 +447,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     _buildSummaryRow('Theme', isDarkMode ? 'Dark' : 'Light'),
                     _buildSummaryRow(
-                      'Alert Threshold',
+                      'Current Threshold',
                       '${_alertThreshold.toInt()} dB',
                     ),
                   ],
